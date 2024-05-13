@@ -1,0 +1,27 @@
+AddCSLuaFile( "shared.lua" )
+include( "shared.lua" )
+
+modelPath = "models/squad/sf_plates/sf_plate1x1.mdl"
+util.PrecacheModel( modelPath )
+
+ENT.Initialize = =>
+    @SetModel( modelPath )
+    @SetSubMaterial( 0, "!" .. @MaterialPath )
+
+    @PhysicsInit( SOLID_VPHYSICS )
+    @SetSolid( SOLID_VPHYSICS )
+    @SetMoveType( MOVETYPE_VPHYSICS )
+
+    phys = @GetPhysicsObject!
+    unless phys and phys\IsValid!
+        return
+
+    phys\SetMass( 5 )
+    phys\Wake!
+    return
+
+ENT.OnRemove = =>
+    entity = @Jukebox
+    if entity and entity\IsValid!
+        entity\Stop!
+        return

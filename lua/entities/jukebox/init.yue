@@ -1,0 +1,151 @@
+AddCSLuaFile( "shared.lua" )
+include( "shared.lua" )
+
+MOVETYPE_VPHYSICS = MOVETYPE_VPHYSICS
+SOLID_VPHYSICS = SOLID_VPHYSICS
+import Add from hook
+
+modelPath = "models/props_lab/citizenradio.mdl"
+util.PrecacheModel( modelPath )
+
+ENT.Initialize = =>
+    @SetModel( modelPath )
+
+    Add "PlayerUse", @, @PlayerUse
+
+    @PhysicsInit( SOLID_VPHYSICS )
+    @SetSolid( SOLID_VPHYSICS )
+    @SetMoveType( MOVETYPE_VPHYSICS )
+    @SetTrigger( true )
+
+    phys = @GetPhysicsObject!
+    unless phys and phys\IsValid!
+        return
+
+    phys\SetMass( 15 )
+    phys\Wake!
+    return
+
+CreateSound = CreateSound
+
+ENT.Play = =>
+    @Stop!
+
+    disc = @Disc
+    unless disc and disc\IsValid!
+        return
+
+    filePath = disc.FilePath
+    unless filePath
+        return
+
+    cSound = CreateSound( @, filePath )
+    @m_cSound = cSound
+
+    cSound\ChangeVolume( 0, 0 )
+    cSound\SetDSP( 1 )
+    cSound\Play!
+
+    cSound\ChangeVolume( 1, 0.5 )
+
+    return cSound
+
+ENT.Stop = =>
+    cSound = @m_cSound
+    unless cSound and cSound\IsPlaying!
+        return
+
+    -- cSound\FadeOut( 0.5 )
+    cSound\Stop!
+    return cSound
+
+ENT.ChangeVolume = ( volume, delta ) =>
+    cSound = @m_cSound
+    if cSound
+        cSound\SetVolume( volume, delta or 0 )
+
+    return cSound
+
+import NoCollide from constraint
+import Simple from timer
+CurTime = CurTime
+
+ENT.Eject = ( ply ) =>
+    disc = @Disc
+    unless disc and disc\IsValid!
+        return
+
+    @m_fLastInsert = CurTime!
+    @Stop!
+
+    @Disc = nil
+    disc\SetParent!
+    disc.Jukebox = nil
+    disc\SetPos( @WorldSpaceCenter! )
+
+    cons = NoCollide( @, disc, 0, 0 )
+    if cons and cons\IsValid!
+        Simple 0.5, ->
+            if cons\IsValid!
+                cons\Remove!
+                return
+
+    phys = disc\GetPhysicsObject!
+    if phys and phys\IsValid!
+        if ply and ply\IsValid!
+            phys\ApplyForceCenter( ( ply\EyePos! - disc\GetPos! ) * 16 )
+        else
+            phys\ApplyForceCenter( @GetAngles!\Forward! * 1024 )
+
+        phys\Wake!
+
+    return disc
+
+angle_zero = angle_zero
+
+ENT.Insert = ( disc ) =>
+    @m_fLastInsert = CurTime!
+    @Eject!
+
+    @Disc = disc
+    disc.Jukebox = @
+    disc\SetParent( @ )
+    disc\SetLocalPos( @OBBCenter! - disc\OBBCenter! )
+    disc\SetLocalAngles( angle_zero )
+    return
+
+ENT.StartTouch = ( entity ) =>
+    if not entity.MusicDisc or ( CurTime! - ( @m_fLastInsert or 0 ) ) < 0.5
+        return
+
+    @Insert( entity )
+    @Play!
+    return
+
+ENT.PlayerUse = ( ply, entity ) =>
+    if entity ~= @
+        return
+
+    curTime, lastUseTime = CurTime!, @m_fLastUse
+    @m_fLastUse = curTime
+
+    if not lastUseTime or ( curTime - lastUseTime ) > 0.025
+        @m_fStartUseTime = curTime
+        @HoldUse( ply, 0 )
+        return
+
+    startUseTime = @m_fStartUseTime
+    if startUseTime and @HoldUse( ply, curTime - startUseTime ) == true
+        @m_fStartUseTime = nil
+
+ENT.HoldUse = ( ply, delay ) =>
+    if delay > 0.5
+        @Eject( ply )
+        return
+
+ENT.Use = ( ply ) =>
+    return
+
+ENT.OnRemove = =>
+    @Stop!
+    return

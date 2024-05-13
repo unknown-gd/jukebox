@@ -1,0 +1,239 @@
+import color_white, CLIENT, pairs from _G
+
+do
+
+    import AddCSLuaFile, CompileFile, Material, isstring, setfenv, SERVER, pcall from _G
+    import Register from scripted_ents
+    import LowerKeyNames from table
+    import Exists from file
+    import MD5 from util
+
+    hook.Add "InitPostEntity", "Jukebox::Init", ->
+        defaultMaterialPath = Material( "icon16/music.png", "mips vertexlitgeneric" )\GetName!
+
+        for fileName in *file.Find( "jukebox/*", "LUA" )
+            if SERVER
+                AddCSLuaFile( "jukebox/" .. fileName )
+
+            func = CompileFile( "jukebox/" .. fileName )
+            unless func
+                print "[Music Player] Failed to compile 'jukebox/" .. fileName .. "'"
+                return
+
+            env = {}
+            setfenv( func, env )
+
+            success, result = pcall( func )
+            unless success
+                print "[Music Player] Failed to call 'jukebox/" .. fileName .. "': " .. result
+                return
+
+            if istable( result )
+                for key, value in pairs( result )
+                    env[ key ] = value
+
+            info = LowerKeyNames( env )
+
+            :title = info
+            unless isstring( title )
+                print "[Music Player] Invalid album title: #{title}"
+                return
+
+            :artwork = info
+            unless isstring( artwork )
+                print "[Music Player] Invalid artwork: #{artwork}"
+                return
+
+            artwork = "jukebox/" .. artwork
+
+            :artist = info
+            unless isstring( artist )
+                artist = nil
+
+            base = {
+                ScriptedEntityType: "jukebox"
+                Category: "#ukdev.jukebox"
+                Author: artist or "unknown"
+                Base: "music_disc"
+                Spawnable: true
+                Album: title
+            }
+
+            if Exists( "materials/" .. artwork, "GAME" )
+                base.MaterialPath = Material( artwork, "vertexlitgeneric mips" )\GetName!
+                if CLIENT
+                    base.IconOverride = artwork
+            else
+                base.MaterialPath = defaultMaterialPath
+                if CLIENT
+                    base.IconOverride = "icon16/music.png"
+
+            :tracks = info
+            for index = 1, #tracks
+                metatable = {}
+                for key, value in pairs( base )
+                    metatable[ key ] = value
+
+                track = tracks[ index ]
+
+                if CLIENT
+                    metatable.PrintName = track.title
+
+                :filepath = track
+                if Exists( "sound/" .. filepath, "GAME" )
+                    metatable.FilePath = filepath
+                    Register( metatable, "md_" .. MD5( filepath ) )
+
+if CLIENT
+
+    red = Color( 255, 50, 50, 255 )
+    black = Color( 0, 0, 0, 255 )
+
+    import GetStored from scripted_ents
+    import GetPhrase from language
+    import BOTTOM, TOP from _G
+    import Create from vgui
+    import gsub from string
+
+    translate = ( str ) ->
+        return gsub str, "#([%w_.-]+)", GetPhrase
+
+    openMenu = =>
+        menu = DermaMenu!
+        menu\AddOption( "#spawnmenu.menu.copy", ->
+            SetClipboardText( @GetSpawnName! )
+            return
+        )\SetIcon( "icon16/page_copy.png" )
+
+        if isfunction( @OpenMenuExtra )
+            @OpenMenuExtra( menu )
+
+        menu\Open!
+        return
+
+    doClick = =>
+        RunConsoleCommand( "gm_spawnsent", @GetSpawnName! )
+        surface.PlaySound( "ui/buttonclickrelease.wav" )
+        return
+
+    openMenuExtra = ( menu ) =>
+        menu\AddOption( "#spawnmenu.menu.spawn_with_toolgun", ->
+            RunConsoleCommand( "creator_name", @GetSpawnName! )
+            RunConsoleCommand( "gmod_tool", "creator" )
+            RunConsoleCommand( "creator_type", "0" )
+            return
+        )\SetIcon( "icon16/brick_add.png" )
+        return
+
+    spawnmenu.AddContentType "jukebox", ( container, obj ) ->
+        unless container and container\IsValid!
+            return
+
+        className = obj.spawnname
+        unless className
+            return
+
+        title = obj.nicename
+        unless title
+            return
+
+        metatable = GetStored( className ).t
+
+        if metatable.Device
+            :devices = container
+            unless devices and devices\IsValid
+                devices = Create( "DIconLayout" )
+                container.devices = devices
+                container\Add( devices )
+                devices\Dock( TOP )
+
+                label = Create( "DLabel", devices )
+                devices.Label = label
+
+                label\Dock( TOP )
+                label\SetText( "#ukdev.devices" )
+                label\SetFont( "ContentHeader" )
+                label\SetContentAlignment( 4 )
+                label\SizeToContents!
+                label\SetTextColor( color_white )
+
+            icon = devices\Add( "SpawnIcon" )
+            icon\SetModel( metatable.ModelPath or "models/props_lab/citizenradio.mdl" )
+            icon\SetTooltip( title )
+
+            size = ScreenScale( 32 )
+            icon\SetSize( size, size )
+
+            icon.OpenMenuExtra = openMenuExtra
+            icon.OpenMenu = openMenu
+            icon.DoClick = doClick
+
+            label = icon\Add( "DLabel" )
+            icon.Label = label
+
+			label\Dock( BOTTOM )
+			label\SetText( obj.nicename )
+			label\SetContentAlignment( 2 )
+			label\DockMargin( 4, 0, 4, 4 )
+			label\SetExpensiveShadow( 1, black )
+			label\SetTextColor( metatable.AdminOnly and red or color_white )
+            label\SizeToContents!
+            return
+
+        author = metatable.Author
+        unless author
+            return
+
+        authorPnl = container[ author ]
+        unless authorPnl and authorPnl\IsValid
+            authorPnl = Create( "DIconLayout" )
+            container[ author ] = authorPnl
+            container\Add( authorPnl )
+            authorPnl\Dock( TOP )
+
+            label = Create( "DLabel", authorPnl )
+            authorPnl.Label = label
+
+            label\Dock( TOP )
+            label\SetText( author )
+            label\SetFont( "ContentHeader" )
+            label\SetContentAlignment( 4 )
+            label\SizeToContents!
+            label\SetTextColor( color_white )
+
+        album = metatable.Album
+        unless album
+            return
+
+        albumPnl = authorPnl[ album ]
+        unless albumPnl and albumPnl\IsValid
+            albumPnl = authorPnl\Add( "DIconLayout" )
+            authorPnl[ album ] = albumPnl
+            albumPnl\Dock( TOP )
+            albumPnl\DockMargin( ScreenScale( 8 ), 0, 0, 0 )
+
+            label = Create( "DLabel", albumPnl )
+            albumPnl.Label = label
+
+            label\Dock( TOP )
+            label\SetText( album )
+            label\SetFont( "DermaLarge" )
+            label\SetContentAlignment( 4 )
+            label\SizeToContents!
+            label\SetTextColor( color_white )
+
+        icon = albumPnl\Add( "ContentIcon" )
+        icon\SetMaterial( obj.material )
+        icon\SetContentType( "entity" )
+        icon\SetAdminOnly( obj.admin )
+        icon\SetSpawnName( className )
+        icon\SetColor( black )
+        icon\SetName( title )
+
+        icon\SetTooltip( translate( "#ukdev.title: " .. title .. "\n" .. "#ukdev.album: " .. album .. "\n" .. "#ukdev.artist: " .. author ) )
+
+        icon.OpenMenuExtra = openMenuExtra
+        icon.OpenMenu = openMenu
+        icon.DoClick = doClick
+
+        return icon
