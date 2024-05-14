@@ -84,6 +84,12 @@ do
                     metatable.FilePath = filepath
                     Register( metatable, "md_" .. MD5( filepath ) )
 
+        if g_SpawnMenu and g_SpawnMenu\IsValid!
+            timer.Simple 0.5, ->
+                RunConsoleCommand( "spawnmenu_reload" )
+
+        return
+
 if CLIENT
 
     red = Color( 255, 50, 50, 255 )
@@ -160,6 +166,9 @@ if CLIENT
             icon = devices\Add( "SpawnIcon" )
             icon\SetModel( metatable.ModelPath or "models/props_lab/citizenradio.mdl" )
             icon\SetTooltip( title )
+
+            icon.GetSpawnName = ->
+                return className
 
             size = ScreenScale( 32 )
             icon\SetSize( size, size )
