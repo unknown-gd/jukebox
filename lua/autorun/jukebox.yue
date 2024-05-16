@@ -82,6 +82,7 @@ do
                 :filepath = track
                 if Exists( "sound/" .. filepath, "GAME" )
                     metatable.FilePath = filepath
+                    -- TODO: Replace this bullsh1t
                     Register( metatable, "md_" .. MD5( filepath ) )
 
         if g_SpawnMenu and g_SpawnMenu\IsValid!
